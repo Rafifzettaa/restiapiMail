@@ -2,7 +2,7 @@
     "name": "vercel-mail-api",
     "version": "1.0.0",
     "scripts": {
-        "start": "node api/mail.js"
+        "start": "node api/index.js"
     },
     "engines": {
         "node": "20.x"
