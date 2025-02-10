@@ -1,0 +1,16 @@
+{
+    "name": "vercel-mail-api",
+    "version": "1.0.0",
+    "scripts": {
+        "start": "node api/mail.js"
+    },
+    "engines": {
+        "node": "20.x"
+    },
+    "dependencies": {
+        "axios": "^0.27.2",
+        "cors": "^2.8.5",
+        "express": "^4.21.2",
+        "serverless-http": "^3.2.0"
+    }
+}
