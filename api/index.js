@@ -257,5 +257,7 @@ app.delete("/api/accounts/:address", authMiddleware, async (req, res) => {
     return res.status(500).json({ error: "Gagal menghapus akun" });
   }
 });
+app.listen(port, () => {
+  console.log(`Temp Mail API listening at http://localhost:${port}`);
+});
 
-module.exports = serverless(app);
