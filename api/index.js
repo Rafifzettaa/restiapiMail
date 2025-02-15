@@ -1,58 +1,67 @@
-const express = require("express");
-const cors = require("cors");
 const axios = require("axios");
-
+const express = require("express");
 const app = express();
-
-// Constants
-const MAX_RETRIES = 3;
-const API_TIMEOUT = 5000;
-const RETRY_DELAY = 1000;
-
-// Middleware setup
-app.use(cors());
-app.use(express.json());
+const cors = require("cors");
+const serverless = require("serverless-http");
+const port = 3000;
 
 // URL Endpoints
 const LOGIN_URL = "https://api.mail.tm/token";
 const ACCOUNT_URL = "https://api.mail.tm/accounts";
+const DOMAIN_URL = "https://api.mail.tm/domains";
 const MESSAGES_URL = "https://api.mail.tm/messages";
+const SOURCES_URL = "https://api.mail.tm/sources";
 const ME_URL = "https://api.mail.tm/me";
 
-// Middleware for authentication
-async function authMiddleware(req, res, next) {
-  const authHeader = req.headers.authorization;
+// Middleware setup
+app.use(cors());
+app.use(express.json()); // For parsing JSON bodies
 
-  if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    console.log("Token not found");
-    return res.status(403).json({ error: "Token not found" });
-  }
-
-  const token = authHeader.split(" ")[1];
-  req.token = token;
-
-  // Verify token by checking /me endpoint
+// Fungsi untuk mendapatkan token
+async function getToken(email, password) {
   try {
-    console.log("Verifying token:", token);
-    await axios.get(ME_URL, {
-      headers: {
-        Authorization: `Bearer ${token}`,
+    const response = await axios.post(
+      LOGIN_URL,
+      {
+        address: email,
+        password: password,
       },
-    });
-    next();
+      { timeout: 5000 }
+    ); // Timeout 10 detik
+    console.log("Token successfully retrieved:", response.data.token);
+    return response.data.token;
   } catch (error) {
-    console.error("Invalid token:", error.message);
-    res.status(401).json({ error: "Invalid token" });
+    console.error(
+      "Gagal mendapatkan token:",
+      error.response?.data || error.message
+    );
+    throw new Error("Invalid credentials");
   }
 }
-// Keep all your existing functions (getToken, generateRandomName, getFakerData, generateEmail, createAccountWithRetry, authMiddleware)
+
+// Fungsi untuk menghasilkan nama acak
+function generateRandomName() {
+  const adjectives = ["happy", "lucky", "sunny", "clever", "bright", "swift"];
+  const nouns = ["user", "person", "friend", "visitor", "guest", "member"];
+  const randomNum = Math.floor(Math.random() * 10000);
+
+  const adjective = adjectives[Math.floor(Math.random() * adjectives.length)];
+  const noun = nouns[Math.floor(Math.random() * nouns.length)];
+
+  return {
+    first: adjective,
+    last: noun + randomNum,
+  };
+}
+
+// Fungsi untuk mengambil data dari Faker API dengan fallback
 async function getFakerData() {
   try {
     const response = await axios.get(
       "https://fakerapi.it/api/v1/custom?_quantity=1&_locale=en_US&first=firstName&last=lastName&phone=phone",
-      { timeout: 5000 } // Add timeout
+      { timeout: 5000 }
     );
-
+    console.log("Faker API response:", response.data);
     if (!response.data?.data?.[0]?.first || !response.data?.data?.[0]?.last) {
       throw new Error("Invalid Faker API response");
     }
@@ -69,50 +78,88 @@ async function getFakerData() {
     return generateRandomName();
   }
 }
-// Helper functions
-const generateStrongPassword = () => {
-  const chars =
-    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*()";
-  return Array.from(
-    { length: 12 },
-    () => chars[Math.floor(Math.random() * chars.length)]
-  ).join("");
-};
 
-const generateEmail = (first, last) => {
+// Fungsi untuk membuat email berdasarkan firstName dan lastName
+function generateEmail(first, last) {
+  if (!first || !last) {
+    throw new Error("firstName atau lastName tidak valid");
+  }
   const timestamp = Date.now().toString(36);
-  return `${first.toLowerCase()}${last.toLowerCase()}${timestamp}@edny.net`;
-};
+  const address = `${first.toLowerCase()}${last.toLowerCase()}${timestamp}@edny.net`;
+  return address;
+}
 
-const createAccountWithRetry = async (address, password) => {
-  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+// Retry logic untuk API request
+async function createAccountWithRetry(
+  address,
+  password,
+  retries = 3,
+  delay = 2000
+) {
+  for (let attempt = 1; attempt <= retries; attempt++) {
     try {
-      const response = await axios.post(
-        "https://api.mail.tm/accounts",
+      const createResponse = await axios.post(
+        ACCOUNT_URL,
         { address, password },
-        { timeout: API_TIMEOUT }
-      );
-      return response.data;
+        { timeout: 5000 }
+      ); // Timeout 10 detik
+      console.log("Account created successfully:", createResponse.data);
+      return createResponse.data;
     } catch (error) {
-      if (attempt === MAX_RETRIES) throw error;
-      await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY));
+      console.error(
+        `Attempt ${attempt} failed:`,
+        error.response?.data || error.message
+      );
+      if (attempt === retries) {
+        throw new Error("Failed to create account after multiple attempts.");
+      }
+      console.log("Retrying in 3 seconds...");
+      await new Promise((resolve) => setTimeout(resolve, delay)); // Delay 3 seconds before retry
     }
   }
-};
-// Endpoint for creating an account
-app.post("/api/accounts", async (_req, res) => {
+}
+
+// Middleware untuk memeriksa token
+async function authMiddleware(req, res, next) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    console.log("Token tidak ditemukan");
+    return res.status(403).json({ error: "Token tidak ditemukan" });
+  }
+
+  const token = authHeader.split(" ")[1];
+  try {
+    console.log("Verifying token:", token);
+    // Verifikasi token dengan mengecek /me endpoint
+    await axios.get(ME_URL, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    req.token = token;
+    next();
+  } catch (error) {
+    console.error("Token tidak valid:", error.message);
+    res.status(401).json({ error: "Token tidak valid" });
+  }
+}
+
+// Endpoint untuk membuat akun
+app.post("/api/accounts", async (req, res) => {
   try {
     console.log("Creating new account...");
     const { first, last } = await getFakerData();
     const address = generateEmail(first, last);
-    const password = generateStrongPassword();
+    const password = "123456";
     console.log("Generated email address:", address);
 
+    // Create new account with retry logic
     try {
       const account = await createAccountWithRetry(address, password);
       console.log("Account creation response:", account);
     } catch (error) {
       console.error("Error creating account (ignoring 500):", error.message);
+      // We ignore 500 error and continue anyway
     }
 
     const loginResponse = await axios.post(
@@ -131,13 +178,13 @@ app.post("/api/accounts", async (_req, res) => {
   } catch (error) {
     console.error("Error creating account:", error);
     return res.status(500).json({
-      error: "Failed to create temporary email account",
+      error: "Gagal membuat akun email sementara",
       details: error.message || error.response?.data || "Unknown error",
     });
   }
 });
 
-// Endpoint for fetching messages
+// Endpoint untuk mengambil pesan (GET /api/messages)
 app.get("/api/messages", authMiddleware, async (req, res) => {
   try {
     console.log("Fetching messages...");
@@ -151,13 +198,13 @@ app.get("/api/messages", authMiddleware, async (req, res) => {
   } catch (error) {
     console.error("Error fetching messages:", error);
     return res.status(error.response?.status || 500).json({
-      error: "Failed to fetch messages",
+      error: "Gagal mengambil pesan",
       details: error.response?.data,
     });
   }
 });
 
-// Endpoint for fetching a specific message
+// Endpoint untuk mengambil pesan berdasarkan ID (GET /api/messages/:id)
 app.get("/api/messages/:id", authMiddleware, async (req, res) => {
   const messageId = req.params.id;
   try {
@@ -171,11 +218,11 @@ app.get("/api/messages/:id", authMiddleware, async (req, res) => {
     return res.json(response.data);
   } catch (error) {
     console.error("Error fetching message:", error);
-    return res.status(404).json({ error: "Message not found" });
+    return res.status(404).json({ error: "Pesan tidak ditemukan" });
   }
 });
 
-// Endpoint for deleting a message
+// Endpoint untuk menghapus pesan berdasarkan ID (DELETE /api/messages/:id)
 app.delete("/api/messages/:id", authMiddleware, async (req, res) => {
   const messageId = req.params.id;
   try {
@@ -186,14 +233,14 @@ app.delete("/api/messages/:id", authMiddleware, async (req, res) => {
       },
     });
     console.log("Message deleted successfully.");
-    return res.status(200).json({ message: "Message deleted successfully" });
+    return res.status(200).json({ message: "Pesan berhasil dihapus" });
   } catch (error) {
     console.error("Error deleting message:", error);
-    return res.status(500).json({ error: "Failed to delete message" });
+    return res.status(500).json({ error: "Gagal menghapus pesan" });
   }
 });
 
-// Endpoint for deleting an account
+// Endpoint untuk menghapus akun berdasarkan alamat (DELETE /api/accounts/:address)
 app.delete("/api/accounts/:address", authMiddleware, async (req, res) => {
   const address = req.params.address;
   try {
@@ -204,20 +251,12 @@ app.delete("/api/accounts/:address", authMiddleware, async (req, res) => {
       },
     });
     console.log("Account deleted successfully.");
-    return res.status(200).json({ message: "Account deleted successfully" });
+    return res.status(200).json({ message: "Akun berhasil dihapus" });
   } catch (error) {
     console.error("Error deleting account:", error);
-    return res.status(500).json({ error: "Failed to delete account" });
+    return res.status(500).json({ error: "Gagal menghapus akun" });
   }
 });
 app.listen(port, () => {
   console.log(`Temp Mail API listening at http://localhost:${port}`);
 });
-
-// Test route
-app.get("/api/test", (_req, res) => {
-  res.json({ message: "Test route is working" });
-});
-
-// Export the Express app as a serverless function
-module.exports = app;
