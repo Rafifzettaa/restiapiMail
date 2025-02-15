@@ -81,7 +81,7 @@ const generateStrongPassword = () => {
 
 const generateEmail = (first, last) => {
   const timestamp = Date.now().toString(36);
-  return `${first.toLowerCase()}${last.toLowerCase()}${timestamp}@e-record.com`;
+  return `${first.toLowerCase()}${last.toLowerCase()}${timestamp}@edny.net`;
 };
 
 const createAccountWithRetry = async (address, password) => {
