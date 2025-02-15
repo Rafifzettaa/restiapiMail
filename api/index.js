@@ -210,6 +210,9 @@ app.delete("/api/accounts/:address", authMiddleware, async (req, res) => {
     return res.status(500).json({ error: "Failed to delete account" });
   }
 });
+app.listen(port, () => {
+  console.log(`Temp Mail API listening at http://localhost:${port}`);
+});
 
 // Test route
 app.get("/api/test", (_req, res) => {
