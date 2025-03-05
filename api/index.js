@@ -85,7 +85,7 @@ function generateEmail(first, last) {
     throw new Error("firstName atau lastName tidak valid");
   }
   const timestamp = Date.now().toString(36);
-  const address = `${first.toLowerCase()}${last.toLowerCase()}${timestamp}@edny.net`;
+  const address = `${first.toLowerCase()}${last.toLowerCase()}${timestamp}@indigobook.com`;
   return address;
 }
 
